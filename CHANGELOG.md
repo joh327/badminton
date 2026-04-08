@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-04-09
+
+### Added
+- **Match history upload** (`upload`) — Import past match results from a CSV file. First line is the date (YYYY-MM-DD), pairs as `name1,name2`, games separated by `---`. Rejects unknown players.
+- **Date support in `--csv`** — The attending list file can now have an optional date (YYYY-MM-DD) on the first line. If present, the session is saved with that date instead of today. If absent, it works as before.
+- **Automatic session ordering** — Sessions in `data.json` are now sorted by date on every save, so uploaded historical sessions slot into the correct position.
+- **Delete sessions by date** (`delete-session`) — Remove all sessions for a given date.
+- **Clear all sessions** (`clear-sessions`) — Remove all session history at once.
+- **Clear all players** (`clear-players`) — Remove all registered players at once.
+
 ## 2026-04-08
 
 ### Added

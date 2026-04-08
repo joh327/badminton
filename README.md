@@ -10,7 +10,8 @@ A CLI tool for organizing badminton doubles sessions. Automatically generates fa
   - Avoids recent partners from past sessions (configurable lookback window)
   - Spreads same-gender pairings fairly across players
 - **Player management** — Add, remove, list, and bulk-register players
-- **Session history** — Every generated session is saved with date and pairings
+- **Match history upload** — Import past session results from CSV files to seed the history
+- **Session history** — Every generated session is saved with date and pairings, sorted chronologically
 - **Stats and analysis** — View per-player partner history or analyze a session for fairness
 - **Unicode support** — Player names can use any characters (Korean, Japanese, etc.)
 
@@ -39,6 +40,9 @@ python badminton.py count
 
 # Remove a player
 python badminton.py remove Alice
+
+# Clear all players
+python badminton.py clear-players
 ```
 
 The bulk-add file format is one `name,gender` per line:
@@ -64,13 +68,54 @@ python badminton.py generate --csv attending.txt
 python badminton.py generate --lookback 3
 ```
 
-The `--csv` file format is one name per line:
+The `--csv` file format is one name per line, with an optional date on the first line:
 
 ```
+2026-04-09
 Alice
 Jake
 Tom
 Eve
+```
+
+If the first line is a valid date (YYYY-MM-DD), the session is saved with that date. Otherwise it's treated as a name and today's date is used.
+
+### Upload Match History
+
+Import past match results so they're used in future pairing generation:
+
+```bash
+python badminton.py upload history.csv
+```
+
+The upload CSV format:
+
+```
+2026-03-25
+Alice,Jake
+Carol,Leo
+Eve,Tom
+---
+Alice,Leo
+Carol,Tom
+Eve,Jake
+```
+
+- First line: date (YYYY-MM-DD, required)
+- Each line: a pair as `name1,name2`
+- `---` separates games within the session
+- All players must be registered first (use `add` or `bulk-add`)
+
+Sessions are automatically sorted by date in the database.
+
+### Manage Sessions
+
+```bash
+# Delete all sessions for a specific date
+python badminton.py delete-session 2026-03-25
+
+# Clear all session history
+python badminton.py clear-sessions
 ```
 
 ### History and Analysis

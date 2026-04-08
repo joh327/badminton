@@ -4,8 +4,9 @@
 import argparse
 import json
 import random
+import re
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from itertools import combinations
 
@@ -21,7 +22,20 @@ def load_data():
 
 
 def save_data(data):
+    data["sessions"].sort(key=lambda s: s["date"])
     DATA_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+
+
+def parse_date(s):
+    """Try to parse a YYYY-MM-DD date string. Returns the string if valid, None otherwise."""
+    s = s.strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        try:
+            datetime.strptime(s, "%Y-%m-%d")
+            return s
+        except ValueError:
+            pass
+    return None
 
 
 # ── Player management ────────────────────────────────────────────────
@@ -86,6 +100,17 @@ def bulk_add(filepath):
         print(f"  Added {name} ({gender})")
     save_data(data)
     print(f"Done: {added} added, {skipped} skipped")
+
+
+def clear_players():
+    data = load_data()
+    count = len(data["players"])
+    if count == 0:
+        print("No players to clear")
+        return
+    data["players"] = []
+    save_data(data)
+    print(f"Cleared all {count} player(s)")
 
 
 def count_players():
@@ -210,8 +235,9 @@ def make_pairs(players, gender_map, recent_partners, same_gender_recent, current
     return best_pairs, best_score
 
 
-def generate(lookback, attending_names=None):
+def generate(lookback, attending_names=None, session_date=None):
     data = load_data()
+    session_date = session_date or str(date.today())
 
     if attending_names:
         attending_names = [n.strip() for n in attending_names]
@@ -281,7 +307,7 @@ def generate(lookback, attending_names=None):
 
     # Save session
     session = {
-        "date": str(date.today()),
+        "date": session_date,
         "lookback": lookback,
         "games": session_games,
     }
@@ -411,6 +437,120 @@ def run_analyse(lookback):
     analyse_session(last_session["games"], data_before, lookback, list(attending))
 
 
+# ── History upload ────────────────────────────────────────────────────
+
+def upload_history(filepath):
+    """Upload match history from a CSV file.
+
+    Format:
+        2026-04-01
+        Alice,Jake
+        Carol,Leo
+        Eve,Tom
+        ---
+        Alice,Leo
+        Carol,Tom
+        Eve,Jake
+    """
+    path = Path(filepath)
+    if not path.exists():
+        print(f"File not found: {filepath}")
+        return
+    data = load_data()
+    known = {p["name"] for p in data["players"]}
+
+    lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines()]
+
+    # First non-empty line must be a date
+    non_empty = [l for l in lines if l]
+    if not non_empty:
+        print("File is empty")
+        return
+    session_date = parse_date(non_empty[0])
+    if not session_date:
+        print(f"First line must be a date (YYYY-MM-DD), got: '{non_empty[0]}'")
+        return
+
+    # Parse games separated by ---
+    games = []
+    current_game = []
+    unknown = set()
+    for line in lines[1:]:  # skip the date line (first line, possibly with blank lines before it)
+        if not line:
+            continue
+        if line == non_empty[0]:  # skip if date line appears again
+            continue
+        if line == "---":
+            if current_game:
+                games.append(current_game)
+                current_game = []
+            continue
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) != 2:
+            print(f"Invalid pair format: '{line}' (expected: name1,name2)")
+            return
+        a, b = parts
+        if a not in known:
+            unknown.add(a)
+        if b not in known:
+            unknown.add(b)
+        current_game.append([a, b])
+    if current_game:
+        games.append(current_game)
+
+    if unknown:
+        print(f"Unknown players (register them first with 'add' or 'bulk-add'):")
+        for name in sorted(unknown):
+            print(f"  {name}")
+        return
+
+    if not games:
+        print("No games found in file")
+        return
+
+    session = {
+        "date": session_date,
+        "lookback": 0,
+        "games": games,
+    }
+    data["sessions"].append(session)
+    save_data(data)
+
+    total_pairs = sum(len(g) for g in games)
+    print(f"Uploaded session for {session_date}: {len(games)} game(s), {total_pairs} pair(s)")
+
+
+# ── Session management ────────────────────────────────────────────────
+
+def delete_sessions(target_date):
+    """Delete all sessions matching a date."""
+    data = load_data()
+    target_date = target_date.strip()
+    if not parse_date(target_date):
+        print(f"Invalid date format: '{target_date}' (expected YYYY-MM-DD)")
+        return
+    before = len(data["sessions"])
+    data["sessions"] = [s for s in data["sessions"] if s["date"] != target_date]
+    removed = before - len(data["sessions"])
+    if removed == 0:
+        print(f"No sessions found for {target_date}")
+        return
+    save_data(data)
+    print(f"Removed {removed} session(s) for {target_date}")
+
+
+def clear_sessions():
+    """Remove all sessions."""
+    data = load_data()
+    count = len(data["sessions"])
+    if count == 0:
+        print("No sessions to clear")
+        return
+    data["sessions"] = []
+    save_data(data)
+    print(f"Cleared all {count} session(s)")
+
+
 # ── Player stats ──────────────────────────────────────────────────────
 
 def show_stats(name, lookback=5):
@@ -459,6 +599,7 @@ def main():
 
     sub.add_parser("players", help="List players")
     sub.add_parser("count", help="Show player count")
+    sub.add_parser("clear-players", help="Remove all players")
 
     p_gen = sub.add_parser("generate", help="Generate pairings")
     p_gen.add_argument("--lookback", type=int, default=2, help="Sessions to check (default: 2)")
@@ -475,6 +616,14 @@ def main():
     p_analyse = sub.add_parser("analyse", help="Analyse the most recent session")
     p_analyse.add_argument("--lookback", type=int, default=2)
 
+    p_upload = sub.add_parser("upload", help="Upload match history from CSV file")
+    p_upload.add_argument("file", help="Path to CSV (date on first line, pairs as name1,name2, --- between games)")
+
+    p_delete = sub.add_parser("delete-session", help="Delete all sessions for a given date")
+    p_delete.add_argument("date", help="Date in YYYY-MM-DD format")
+
+    sub.add_parser("clear-sessions", help="Remove all session history")
+
     args = parser.parse_args()
 
     if args.command == "add":
@@ -487,25 +636,40 @@ def main():
         list_players()
     elif args.command == "count":
         count_players()
+    elif args.command == "clear-players":
+        clear_players()
     elif args.command == "generate":
         attending = args.attending
+        session_date = None
         if args.csv:
             csv_path = Path(args.csv)
             if not csv_path.exists():
                 print(f"File not found: {args.csv}")
                 sys.exit(1)
-            names = [line.strip() for line in csv_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-            if not names:
+            lines = [line.strip() for line in csv_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            if not lines:
                 print(f"No names found in {args.csv}")
                 sys.exit(1)
-            attending = names
-        generate(args.lookback, attending)
+            if parse_date(lines[0]):
+                session_date = lines[0]
+                lines = lines[1:]
+            if not lines:
+                print(f"No names found in {args.csv} (only a date)")
+                sys.exit(1)
+            attending = lines
+        generate(args.lookback, attending, session_date)
     elif args.command == "history":
         show_history(args.n)
     elif args.command == "stats":
         show_stats(args.name, args.lookback)
     elif args.command == "analyse":
         run_analyse(args.lookback)
+    elif args.command == "upload":
+        upload_history(args.file)
+    elif args.command == "delete-session":
+        delete_sessions(args.date)
+    elif args.command == "clear-sessions":
+        clear_sessions()
     else:
         parser.print_help()
 
