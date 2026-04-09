@@ -11,8 +11,10 @@ from pathlib import Path
 from itertools import combinations
 
 DATA_FILE = Path(__file__).parent / "data.json"
+OUTPUT_DIR = Path(__file__).parent / "output"
 NUM_GAMES = 2
 NUM_ATTEMPTS = 5000
+VALID_LEVELS = ("B", "I")
 
 
 def load_data():
@@ -24,6 +26,14 @@ def load_data():
 def save_data(data):
     data["sessions"].sort(key=lambda s: s["date"])
     DATA_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+
+
+def write_output(filename, lines):
+    """Write lines to a file in the output directory."""
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    path = OUTPUT_DIR / filename
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"  Saved to {path}")
 
 
 def parse_date(s):
@@ -40,19 +50,28 @@ def parse_date(s):
 
 # ── Player management ────────────────────────────────────────────────
 
-def add_player(name, gender):
+def add_player(name, gender, level=None):
     data = load_data()
     name = name.strip()
     gender = gender.strip().upper()
     if gender not in ("M", "F"):
         print("Gender must be M or F")
         return
+    if level:
+        level = level.strip().upper()
+        if level not in VALID_LEVELS:
+            print(f"Level must be one of {', '.join(VALID_LEVELS)}")
+            return
     if any(p["name"] == name for p in data["players"]):
         print(f"'{name}' already exists")
         return
-    data["players"].append({"name": name, "gender": gender})
+    player = {"name": name, "gender": gender}
+    if level:
+        player["level"] = level
+    data["players"].append(player)
     save_data(data)
-    print(f"Added {name} ({gender})")
+    lvl_str = f", {level}" if level else ""
+    print(f"Added {name} ({gender}{lvl_str})")
 
 
 def remove_player(name):
@@ -68,38 +87,53 @@ def remove_player(name):
 
 
 def bulk_add(filepath):
-    """Add players from a file. Each line: name,gender (e.g. Alice,F). Skips existing."""
+    """Add players from a file. Each line: name,gender[,level] (e.g. Alice,F,B). Updates level for existing players."""
     path = Path(filepath)
     if not path.exists():
         print(f"File not found: {filepath}")
         return
     data = load_data()
-    existing = {p["name"] for p in data["players"]}
+    existing = {p["name"]: p for p in data["players"]}
     added = 0
+    updated = 0
     skipped = 0
     for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         line = line.strip()
         if not line:
             continue
         parts = [p.strip() for p in line.split(",")]
-        if len(parts) != 2:
-            print(f"  Line {lineno}: invalid format '{line}' (expected: name,gender)")
+        if len(parts) not in (2, 3):
+            print(f"  Line {lineno}: invalid format '{line}' (expected: name,gender[,level])")
             continue
-        name, gender = parts
+        name, gender = parts[0], parts[1]
         gender = gender.upper()
         if gender not in ("M", "F"):
             print(f"  Line {lineno}: invalid gender '{gender}' for '{name}' (must be M or F)")
             continue
+        level = None
+        if len(parts) == 3:
+            level = parts[2].upper()
+            if level not in VALID_LEVELS:
+                print(f"  Line {lineno}: invalid level '{level}' for '{name}' (must be {', '.join(VALID_LEVELS)})")
+                continue
         if name in existing:
-            print(f"  Skipped '{name}' (already exists)")
-            skipped += 1
+            if level and existing[name].get("level") != level:
+                existing[name]["level"] = level
+                updated += 1
+                print(f"  Updated {name} level to {level}")
+            else:
+                skipped += 1
             continue
-        data["players"].append({"name": name, "gender": gender})
-        existing.add(name)
+        player = {"name": name, "gender": gender}
+        if level:
+            player["level"] = level
+        data["players"].append(player)
+        existing[name] = player
         added += 1
-        print(f"  Added {name} ({gender})")
+        lvl_str = f", {level}" if level else ""
+        print(f"  Added {name} ({gender}{lvl_str})")
     save_data(data)
-    print(f"Done: {added} added, {skipped} skipped")
+    print(f"Done: {added} added, {updated} updated, {skipped} skipped")
 
 
 def clear_players():
@@ -111,6 +145,22 @@ def clear_players():
     data["players"] = []
     save_data(data)
     print(f"Cleared all {count} player(s)")
+
+
+def set_level(name, level):
+    data = load_data()
+    name = name.strip()
+    level = level.strip().upper()
+    if level not in VALID_LEVELS:
+        print(f"Level must be one of {', '.join(VALID_LEVELS)}")
+        return
+    for p in data["players"]:
+        if p["name"] == name:
+            p["level"] = level
+            save_data(data)
+            print(f"Set {name} level to {level}")
+            return
+    print(f"'{name}' not found")
 
 
 def count_players():
@@ -127,14 +177,15 @@ def list_players():
     if not data["players"]:
         print("No players registered")
         return
+    level_map = {p["name"]: p.get("level", "-") for p in data["players"]}
     males = sorted(p["name"] for p in data["players"] if p["gender"] == "M")
     females = sorted(p["name"] for p in data["players"] if p["gender"] == "F")
     print(f"Males ({len(males)}):")
     for n in males:
-        print(f"  {n}")
+        print(f"  {n} [{level_map[n]}]")
     print(f"Females ({len(females)}):")
     for n in females:
-        print(f"  {n}")
+        print(f"  {n} [{level_map[n]}]")
     print(f"Total: {len(data['players'])}")
 
 
@@ -170,7 +221,7 @@ def get_recent_same_gender_players(data, lookback):
 
 # ── Pairing generation ────────────────────────────────────────────────
 
-def score_pairing(pairs, gender_map, recent_partners, same_gender_recent, current_session_pairs, current_session_sg):
+def score_pairing(pairs, gender_map, level_map, recent_partners, same_gender_recent, current_session_pairs, current_session_sg, game_num):
     """Lower score = better. 0 = perfect."""
     score = 0
     for a, b in pairs:
@@ -192,10 +243,19 @@ def score_pairing(pairs, gender_map, recent_partners, same_gender_recent, curren
             if a in same_gender_recent or b in same_gender_recent:
                 score += 50
 
+        # Soft (lowest): skill level preference
+        lvl_a = level_map.get(a)
+        lvl_b = level_map.get(b)
+        if lvl_a and lvl_b:
+            if game_num == 1 and lvl_a == lvl_b:
+                score += 25  # Game 1: prefer different level
+            elif game_num == 2 and lvl_a != lvl_b:
+                score += 25  # Game 2: prefer same level
+
     return score
 
 
-def make_pairs(players, gender_map, recent_partners, same_gender_recent, current_session_pairs, current_session_sg):
+def make_pairs(players, gender_map, level_map, recent_partners, same_gender_recent, current_session_pairs, current_session_sg, game_num):
     """Generate one game's pairings using weighted random search."""
     n = len(players)
     if n % 2 != 0:
@@ -225,7 +285,7 @@ def make_pairs(players, gender_map, recent_partners, same_gender_recent, current
         for i in range(0, len(leftover), 2):
             pairs.append((leftover[i], leftover[i + 1]))
 
-        s = score_pairing(pairs, gender_map, recent_partners, same_gender_recent, current_session_pairs, current_session_sg)
+        s = score_pairing(pairs, gender_map, level_map, recent_partners, same_gender_recent, current_session_pairs, current_session_sg, game_num)
         if s < best_score:
             best_score = s
             best_pairs = pairs[:]
@@ -235,7 +295,7 @@ def make_pairs(players, gender_map, recent_partners, same_gender_recent, current
     return best_pairs, best_score
 
 
-def generate(lookback, attending_names=None, session_date=None):
+def generate(lookback, attending_names=None, session_date=None, output_file=None):
     data = load_data()
     session_date = session_date or str(date.today())
 
@@ -258,15 +318,17 @@ def generate(lookback, attending_names=None, session_date=None):
         return
 
     gender_map = {p["name"]: p["gender"] for p in data["players"]}
+    level_map = {p["name"]: p.get("level") for p in data["players"]}
     recent_partners = get_recent_partners(data, lookback)
     same_gender_recent = get_recent_same_gender_players(data, lookback)
 
     session_games = []
     current_session_pairs = set()
     current_session_sg = set()  # players who already had a same-gender pair this session
+    out = []
 
     for game_num in range(1, NUM_GAMES + 1):
-        pairs, score = make_pairs(players, gender_map, recent_partners, same_gender_recent, current_session_pairs, current_session_sg)
+        pairs, score = make_pairs(players, gender_map, level_map, recent_partners, same_gender_recent, current_session_pairs, current_session_sg, game_num)
 
         # Add this game's pairs to session tracker
         for a, b in pairs:
@@ -278,29 +340,39 @@ def generate(lookback, attending_names=None, session_date=None):
         session_games.append([[a, b] for a, b in pairs])
 
         # Print
-        print(f"\n{'=' * 55}")
-        print(f"  GAME {game_num}" + (f"  (constraint score: {score})" if score > 0 else ""))
-        print(f"{'=' * 55}")
-        for i, (a, b) in enumerate(pairs, 1):
+        out.append(f"\n{'=' * 55}")
+        out.append(f"  GAME {game_num}" + (f"  (constraint score: {score})" if score > 0 else ""))
+        out.append(f"{'=' * 55}")
+        for a, b in pairs:
             tag = ""
             if gender_map[a] == gender_map[b]:
                 tag = " [same gender]"
             if a in recent_partners and b in recent_partners[a]:
                 tag += " [recent partner]"
-            print(f"  Court {i:2d}: {a:>12} + {b}{tag}")
+            lvl_a = level_map.get(a)
+            lvl_b = level_map.get(b)
+            if lvl_a and lvl_b:
+                if lvl_a == lvl_b:
+                    tag += f" [both {lvl_a}]"
+                else:
+                    tag += f" [{lvl_a}+{lvl_b}]"
+            out.append(f"  {a:>12} + {b}{tag}")
 
     # Verification
-    print(f"\n{'=' * 55}")
-    print("  VERIFICATION")
-    print(f"{'=' * 55}")
+    out.append(f"\n{'=' * 55}")
+    out.append("  VERIFICATION")
+    out.append(f"{'=' * 55}")
     all_pairs = []
     for game in session_games:
         for pair in game:
             all_pairs.append(frozenset(pair))
     if len(all_pairs) == len(set(all_pairs)):
-        print("  ✓ No repeated partners within this session")
+        out.append("  ✓ No repeated partners within this session")
     else:
-        print("  ✗ WARNING: Some partners repeated within session!")
+        out.append("  ✗ WARNING: Some partners repeated within session!")
+
+    for line in out:
+        print(line)
 
     # Analysis (before saving, so lookback checks against previous sessions only)
     analyse_session(session_games, data, lookback, players)
@@ -315,26 +387,40 @@ def generate(lookback, attending_names=None, session_date=None):
     save_data(data)
     print(f"  Session saved. (lookback={lookback})")
 
+    fname = output_file or session_date.replace("-", "") + ".txt"
+    write_output(fname, out)
+
 
 # ── History view ──────────────────────────────────────────────────────
 
-def show_history(n=5):
+def show_history(n=5, filter_date=None, output_file=None):
     data = load_data()
-    sessions = data["sessions"][-n:]
+    if filter_date:
+        sessions = [s for s in data["sessions"] if s["date"] == filter_date]
+    else:
+        sessions = data["sessions"][-n:]
     if not sessions:
-        print("No session history")
+        msg = f"No sessions found for {filter_date}" if filter_date else "No session history"
+        print(msg)
         return
     gender_map = {p["name"]: p["gender"] for p in data["players"]}
+    out = []
     for session in sessions:
-        print(f"\n{'=' * 55}")
-        print(f"  Date: {session['date']}  (lookback={session.get('lookback', '?')})")
-        print(f"{'=' * 55}")
+        out.append(f"\n{'=' * 55}")
+        out.append(f"  Date: {session['date']}  (lookback={session.get('lookback', '?')})")
+        out.append(f"{'=' * 55}")
         for gi, game in enumerate(session["games"], 1):
-            print(f"  Game {gi}:")
-            for i, pair in enumerate(game, 1):
+            out.append(f"  Game {gi}:")
+            for pair in game:
                 a, b = pair
                 tag = " [same gender]" if gender_map.get(a) == gender_map.get(b) else ""
-                print(f"    Court {i:2d}: {a:>12} + {b}{tag}")
+                out.append(f"    {a:>12} + {b}{tag}")
+    for line in out:
+        print(line)
+    if output_file:
+        write_output(output_file, out)
+    elif filter_date:
+        write_output(filter_date.replace("-", "") + ".txt", out)
 
 
 # ── Analysis ──────────────────────────────────────────────────────────
@@ -590,9 +676,14 @@ def main():
     p_add = sub.add_parser("add", help="Add a player")
     p_add.add_argument("name")
     p_add.add_argument("gender", help="M or F")
+    p_add.add_argument("level", nargs="?", default=None, help="Skill level: B (beginner) or I (intermediate)")
 
     p_rm = sub.add_parser("remove", help="Remove a player")
     p_rm.add_argument("name")
+
+    p_lvl = sub.add_parser("set-level", help="Update a player's skill level")
+    p_lvl.add_argument("name")
+    p_lvl.add_argument("level", help="B (beginner) or I (intermediate)")
 
     p_bulk = sub.add_parser("bulk-add", help="Bulk register players from file (name,gender per line)")
     p_bulk.add_argument("file", help="Path to file with one 'name,gender' per line")
@@ -605,9 +696,12 @@ def main():
     p_gen.add_argument("--lookback", type=int, default=2, help="Sessions to check (default: 2)")
     p_gen.add_argument("--attending", nargs="+", help="Names of attending players (default: all)")
     p_gen.add_argument("--csv", type=str, help="Path to file with one player name per line")
+    p_gen.add_argument("--output", type=str, help="Save results to output/<filename>")
 
     p_hist = sub.add_parser("history", help="View session history")
     p_hist.add_argument("-n", type=int, default=5, help="Number of sessions to show")
+    p_hist.add_argument("--date", type=str, help="Filter by date (YYYY-MM-DD)")
+    p_hist.add_argument("--output", type=str, help="Save results to output/<filename>")
 
     p_stats = sub.add_parser("stats", help="View player stats")
     p_stats.add_argument("name")
@@ -627,9 +721,11 @@ def main():
     args = parser.parse_args()
 
     if args.command == "add":
-        add_player(args.name, args.gender)
+        add_player(args.name, args.gender, args.level)
     elif args.command == "remove":
         remove_player(args.name)
+    elif args.command == "set-level":
+        set_level(args.name, args.level)
     elif args.command == "bulk-add":
         bulk_add(args.file)
     elif args.command == "players":
@@ -657,9 +753,9 @@ def main():
                 print(f"No names found in {args.csv} (only a date)")
                 sys.exit(1)
             attending = lines
-        generate(args.lookback, attending, session_date)
+        generate(args.lookback, attending, session_date, args.output)
     elif args.command == "history":
-        show_history(args.n)
+        show_history(args.n, args.date, args.output)
     elif args.command == "stats":
         show_stats(args.name, args.lookback)
     elif args.command == "analyse":

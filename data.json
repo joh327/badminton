@@ -2,19 +2,23 @@
   "players": [
     {
       "name": "유우람",
-      "gender": "M"
+      "gender": "M",
+      "level": "I"
     },
     {
       "name": "김진영",
-      "gender": "M"
+      "gender": "M",
+      "level": "I"
     },
     {
       "name": "유창재",
-      "gender": "M"
+      "gender": "M",
+      "level": "B"
     },
     {
       "name": "양준",
-      "gender": "M"
+      "gender": "M",
+      "level": "I"
     },
     {
       "name": "김홍",
@@ -22,15 +26,18 @@
     },
     {
       "name": "고은강",
-      "gender": "M"
+      "gender": "M",
+      "level": "B"
     },
     {
       "name": "이지훈",
-      "gender": "M"
+      "gender": "M",
+      "level": "I"
     },
     {
       "name": "이두용",
-      "gender": "M"
+      "gender": "M",
+      "level": "I"
     },
     {
       "name": "신재호",
@@ -42,7 +49,8 @@
     },
     {
       "name": "이서준",
-      "gender": "M"
+      "gender": "M",
+      "level": "I"
     },
     {
       "name": "함성현",
@@ -54,87 +62,108 @@
     },
     {
       "name": "오재훈",
-      "gender": "M"
+      "gender": "M",
+      "level": "I"
     },
     {
       "name": "박원서",
-      "gender": "F"
+      "gender": "F",
+      "level": "B"
     },
     {
       "name": "기선준",
-      "gender": "F"
+      "gender": "F",
+      "level": "I"
     },
     {
       "name": "차지은",
-      "gender": "F"
+      "gender": "F",
+      "level": "I"
     },
     {
       "name": "이지우",
-      "gender": "F"
+      "gender": "F",
+      "level": "B"
     },
     {
       "name": "신민정",
-      "gender": "F"
+      "gender": "F",
+      "level": "B"
     },
     {
       "name": "손서영",
-      "gender": "F"
+      "gender": "F",
+      "level": "B"
     },
     {
       "name": "이윤지",
-      "gender": "F"
+      "gender": "F",
+      "level": "I"
     },
     {
       "name": "박현성",
-      "gender": "M"
+      "gender": "M",
+      "level": "B"
     },
     {
       "name": "조준영",
-      "gender": "M"
+      "gender": "M",
+      "level": "B"
     },
     {
       "name": "안제경",
-      "gender": "M"
+      "gender": "M",
+      "level": "B"
     },
     {
       "name": "최진",
-      "gender": "F"
+      "gender": "F",
+      "level": "I"
     },
     {
       "name": "정주원",
-      "gender": "F"
+      "gender": "F",
+      "level": "I"
     },
     {
       "name": "김소연",
-      "gender": "F"
+      "gender": "F",
+      "level": "I"
     },
     {
       "name": "김하은",
-      "gender": "F"
+      "gender": "F",
+      "level": "I"
     },
     {
       "name": "김민재",
-      "gender": "M"
+      "gender": "M",
+      "level": "I"
     },
     {
       "name": "김진혁",
-      "gender": "M"
+      "gender": "M",
+      "level": "B"
     },
     {
       "name": "유선제",
-      "gender": "M"
+      "gender": "M",
+      "level": "B"
     },
     {
       "name": "최진호",
-      "gender": "M"
+      "gender": "M",
+      "level": "I"
     },
     {
       "name": "송유리",
-      "gender": "F"
+      "gender": "F",
+      "level": "B"
     },
     {
       "name": "유하경",
-      "gender": "F"
+      "gender": "F",
+      "level": "B"
     }
   ],
   "sessions": [
