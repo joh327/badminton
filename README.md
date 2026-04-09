@@ -25,14 +25,18 @@ A CLI tool for organizing badminton doubles sessions. Automatically generates fa
 ### Player Management
 
 ```bash
-# Add a single player
+# Add a single player (level is optional: B=beginner, I=intermediate)
 python badminton.py add Alice F
-python badminton.py add Jake M
+python badminton.py add Jake M B
+python badminton.py add Eve F I
 
-# Bulk register from a file (name,gender per line — skips existing players)
+# Bulk register from a file (name,gender[,level] per line — skips existing players)
 python badminton.py bulk-add players.txt
 
-# List all players
+# Update a player's skill level
+python badminton.py set-level Alice I
+
+# List all players (shows level)
 python badminton.py players
 
 # Show player count
@@ -45,11 +49,12 @@ python badminton.py remove Alice
 python badminton.py clear-players
 ```
 
-The bulk-add file format is one `name,gender` per line:
+The bulk-add file format is one `name,gender[,level]` per line (level is optional):
 
 ```
-Alice,F
-Jake,M
+Alice,F,B
+Jake,M,I
+Eve,F
 ```
 
 ### Generate Pairings
@@ -66,6 +71,9 @@ python badminton.py generate --csv attending.txt
 
 # Adjust lookback window (default: 2 sessions)
 python badminton.py generate --lookback 3
+
+# Save results to output/ folder
+python badminton.py generate --csv attending.txt --output results.txt
 ```
 
 The `--csv` file format is one name per line, with an optional date on the first line:
@@ -127,6 +135,12 @@ python badminton.py history
 # View last N sessions
 python badminton.py history -n 10
 
+# View sessions for a specific date
+python badminton.py history --date 2026-04-01
+
+# Save history to output/ folder
+python badminton.py history --date 2026-04-01 --output session.txt
+
 # View stats for a player (last 5 sessions by default)
 python badminton.py stats Alice
 python badminton.py stats Alice --lookback 10
@@ -140,7 +154,7 @@ python badminton.py analyse --lookback 3
 
 All data is stored in `data.json` in the same directory as the script. It contains:
 
-- **players** — List of registered players with name and gender
+- **players** — List of registered players with name, gender, and optional skill level
 - **sessions** — History of all generated sessions with date, lookback value, and game pairings
 
 ## How Pairing Works
@@ -151,4 +165,5 @@ For each game in a session (default: 2 games), the tool:
 2. Scores each pairing based on constraints:
    - **Hard constraints** (score +10,000): No repeated partner within the session; no same-gender pair if the player already had one this session
    - **Soft constraints** (score +100): Avoid partners from recent sessions; penalize same-gender pairs for players who had one recently
+   - **Skill level** (score +25, lowest priority): Game 1 prefers different-level partners; Game 2 prefers same-level partners. Only applies when both players have a level set.
 3. Picks the lowest-scoring (fairest) pairing
