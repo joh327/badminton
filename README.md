@@ -74,6 +74,9 @@ python badminton.py generate --lookback 3
 
 # Save results to output/ folder
 python badminton.py generate --csv attending.txt --output results.txt
+
+# Generate pairings and save a visual HTML to visible/ (skips analysis output)
+python badminton.py generate --csv attending.txt --visual
 ```
 
 The `--csv` file format is one name per line, with an optional date on the first line:
@@ -141,6 +144,9 @@ python badminton.py history --date 2026-04-01
 # Save history to output/ folder
 python badminton.py history --date 2026-04-01 --output session.txt
 
+# Save a visual HTML for an existing session to visible/
+python badminton.py history --date 2026-04-01 --visual
+
 # View stats for a player (last 5 sessions by default)
 python badminton.py stats Alice
 python badminton.py stats Alice --lookback 10
@@ -165,5 +171,5 @@ For each game in a session (default: 2 games), the tool:
 2. Scores each pairing based on constraints:
    - **Hard constraints** (score +10,000): No repeated partner within the session; no same-gender pair if the player already had one this session
    - **Soft constraints** (score +100): Avoid partners from recent sessions; penalize same-gender pairs for players who had one recently
-   - **Skill level** (score +25, lowest priority): Game 1 prefers different-level partners; Game 2 prefers same-level partners. Only applies when both players have a level set.
+   - **Skill level** (score +25, lowest priority): Both games prefer different-level partners (B+I). Only applies when both players have a level set.
 3. Picks the lowest-scoring (fairest) pairing
