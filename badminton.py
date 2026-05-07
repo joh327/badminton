@@ -12,6 +12,7 @@ from itertools import combinations
 
 DATA_FILE = Path(__file__).parent / "data.json"
 OUTPUT_DIR = Path(__file__).parent / "output"
+VISIBLE_DIR = Path(__file__).parent / "visible"
 NUM_GAMES = 2
 NUM_ATTEMPTS = 5000
 VALID_LEVELS = ("B", "I")
@@ -34,6 +35,61 @@ def write_output(filename, lines):
     path = OUTPUT_DIR / filename
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"  Saved to {path}")
+
+
+def write_visual(filename, session_games, session_date):
+    """Write a visual HTML file to the visible directory."""
+    VISIBLE_DIR.mkdir(exist_ok=True)
+    path = VISIBLE_DIR / filename
+
+    games_html = ""
+    for gi, game in enumerate(session_games, 1):
+        pairs_html = ""
+        for a, b in game:
+            pairs_html += f"""
+            <div class="pair">
+              <span class="player">{a}</span>
+              <span class="vs">+</span>
+              <span class="player">{b}</span>
+            </div>"""
+        games_html += f"""
+        <div class="game">
+          <h2>Game {gi}</h2>
+          <div class="pairs">{pairs_html}
+          </div>
+        </div>"""
+
+    html = f"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Badminton Pairs — {session_date}</title>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f0f4f8; padding: 24px; }}
+  h1 {{ text-align: center; color: #1a202c; margin-bottom: 24px; font-size: 1.6rem; }}
+  .games {{ display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }}
+  .game {{ background: white; border-radius: 12px; padding: 20px; min-width: 280px; flex: 1; max-width: 420px;
+           box-shadow: 0 2px 8px rgba(0,0,0,0.08); }}
+  .game h2 {{ font-size: 1.1rem; color: #2d3748; margin-bottom: 16px; padding-bottom: 8px;
+              border-bottom: 2px solid #e2e8f0; }}
+  .pairs {{ display: flex; flex-direction: column; gap: 10px; }}
+  .pair {{ display: flex; align-items: center; gap: 8px; background: #f7fafc; border-radius: 8px;
+           padding: 10px 14px; }}
+  .player {{ font-weight: 600; color: #2d3748; font-size: 0.95rem; }}
+  .vs {{ color: #a0aec0; font-weight: 700; }}
+</style>
+</head>
+<body>
+<h1>Badminton Pairs — {session_date}</h1>
+<div class="games">{games_html}
+</div>
+</body>
+</html>"""
+
+    path.write_text(html, encoding="utf-8")
+    print(f"  Visual saved to {path}")
 
 
 def parse_date(s):
@@ -221,7 +277,7 @@ def get_recent_same_gender_players(data, lookback):
 
 # ── Pairing generation ────────────────────────────────────────────────
 
-def score_pairing(pairs, gender_map, level_map, recent_partners, same_gender_recent, current_session_pairs, current_session_sg, game_num):
+def score_pairing(pairs, gender_map, level_map, recent_partners, same_gender_recent, current_session_pairs, current_session_sg):
     """Lower score = better. 0 = perfect."""
     score = 0
     for a, b in pairs:
@@ -243,19 +299,16 @@ def score_pairing(pairs, gender_map, level_map, recent_partners, same_gender_rec
             if a in same_gender_recent or b in same_gender_recent:
                 score += 50
 
-        # Soft (lowest): skill level preference
+        # Soft (lowest): skill level preference — always prefer different levels
         lvl_a = level_map.get(a)
         lvl_b = level_map.get(b)
-        if lvl_a and lvl_b:
-            if game_num == 1 and lvl_a == lvl_b:
-                score += 25  # Game 1: prefer different level
-            elif game_num == 2 and lvl_a != lvl_b:
-                score += 25  # Game 2: prefer same level
+        if lvl_a and lvl_b and lvl_a == lvl_b:
+            score += 25
 
     return score
 
 
-def make_pairs(players, gender_map, level_map, recent_partners, same_gender_recent, current_session_pairs, current_session_sg, game_num):
+def make_pairs(players, gender_map, level_map, recent_partners, same_gender_recent, current_session_pairs, current_session_sg):
     """Generate one game's pairings using weighted random search."""
     n = len(players)
     if n % 2 != 0:
@@ -285,7 +338,7 @@ def make_pairs(players, gender_map, level_map, recent_partners, same_gender_rece
         for i in range(0, len(leftover), 2):
             pairs.append((leftover[i], leftover[i + 1]))
 
-        s = score_pairing(pairs, gender_map, level_map, recent_partners, same_gender_recent, current_session_pairs, current_session_sg, game_num)
+        s = score_pairing(pairs, gender_map, level_map, recent_partners, same_gender_recent, current_session_pairs, current_session_sg)
         if s < best_score:
             best_score = s
             best_pairs = pairs[:]
@@ -295,7 +348,7 @@ def make_pairs(players, gender_map, level_map, recent_partners, same_gender_rece
     return best_pairs, best_score
 
 
-def generate(lookback, attending_names=None, session_date=None, output_file=None):
+def generate(lookback, attending_names=None, session_date=None, output_file=None, visual=False):
     data = load_data()
     session_date = session_date or str(date.today())
 
@@ -328,7 +381,7 @@ def generate(lookback, attending_names=None, session_date=None, output_file=None
     out = []
 
     for game_num in range(1, NUM_GAMES + 1):
-        pairs, score = make_pairs(players, gender_map, level_map, recent_partners, same_gender_recent, current_session_pairs, current_session_sg, game_num)
+        pairs, score = make_pairs(players, gender_map, level_map, recent_partners, same_gender_recent, current_session_pairs, current_session_sg)
 
         # Add this game's pairs to session tracker
         for a, b in pairs:
@@ -375,7 +428,8 @@ def generate(lookback, attending_names=None, session_date=None, output_file=None
         print(line)
 
     # Analysis (before saving, so lookback checks against previous sessions only)
-    analyse_session(session_games, data, lookback, players)
+    if not visual:
+        analyse_session(session_games, data, lookback, players)
 
     # Save session
     session = {
@@ -389,11 +443,13 @@ def generate(lookback, attending_names=None, session_date=None, output_file=None
 
     fname = output_file or session_date.replace("-", "") + ".txt"
     write_output(fname, out)
+    if visual:
+        write_visual(session_date.replace("-", "") + ".html", session_games, session_date)
 
 
 # ── History view ──────────────────────────────────────────────────────
 
-def show_history(n=5, filter_date=None, output_file=None):
+def show_history(n=5, filter_date=None, output_file=None, visual=False):
     data = load_data()
     if filter_date:
         sessions = [s for s in data["sessions"] if s["date"] == filter_date]
@@ -415,6 +471,8 @@ def show_history(n=5, filter_date=None, output_file=None):
                 a, b = pair
                 tag = " [same gender]" if gender_map.get(a) == gender_map.get(b) else ""
                 out.append(f"    {a:>12} + {b}{tag}")
+        if visual:
+            write_visual(session["date"].replace("-", "") + ".html", session["games"], session["date"])
     for line in out:
         print(line)
     if output_file:
@@ -697,11 +755,13 @@ def main():
     p_gen.add_argument("--attending", nargs="+", help="Names of attending players (default: all)")
     p_gen.add_argument("--csv", type=str, help="Path to file with one player name per line")
     p_gen.add_argument("--output", type=str, help="Save results to output/<filename>")
+    p_gen.add_argument("--visual", action="store_true", help="Skip analysis and also save a visual HTML to visible/")
 
     p_hist = sub.add_parser("history", help="View session history")
     p_hist.add_argument("-n", type=int, default=5, help="Number of sessions to show")
     p_hist.add_argument("--date", type=str, help="Filter by date (YYYY-MM-DD)")
     p_hist.add_argument("--output", type=str, help="Save results to output/<filename>")
+    p_hist.add_argument("--visual", action="store_true", help="Also save a visual HTML to visible/")
 
     p_stats = sub.add_parser("stats", help="View player stats")
     p_stats.add_argument("name")
@@ -753,9 +813,9 @@ def main():
                 print(f"No names found in {args.csv} (only a date)")
                 sys.exit(1)
             attending = lines
-        generate(args.lookback, attending, session_date, args.output)
+        generate(args.lookback, attending, session_date, args.output, args.visual)
     elif args.command == "history":
-        show_history(args.n, args.date, args.output)
+        show_history(args.n, args.date, args.output, args.visual)
     elif args.command == "stats":
         show_stats(args.name, args.lookback)
     elif args.command == "analyse":

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-05-06
+
+### Added
+- **Visual HTML output** (`--visual` flag on `generate` and `history`) — Saves a clean, card-based HTML file to `visible/<date>.html` showing partner pairs with no analysis tags. Open with `open visible/<date>.html`.
+
+### Changed
+- **Skill level constraint** — Both games now prefer different-level partners (B+I), instead of Game 1 preferring different and Game 2 preferring same.
+
 ## 2026-04-09
 
 ### Added
